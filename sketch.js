@@ -1,4 +1,3 @@
-// ------------------------------------------------------------
 // GAME STATES
 // The game is always in exactly one state at a time.
 // Each state controls what gets drawn and what responds to input.
@@ -654,6 +653,11 @@ function drawFightHUD() {
 // per keypress, keyIsDown() fires every frame the key is held.
 // ============================================================
 function keyPressed() {
+  // First user interaction: allow start screen music
+  if (gameState === STATE_START && !startScreenMusic.isPlaying()) {
+    startScreenMusic.loop();
+  }
+ 
   // Start or rematch — only responds to ENTER
   if (keyCode === ENTER) {
     if (gameState === STATE_START || gameState === STATE_WIN) {
