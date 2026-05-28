@@ -22,8 +22,15 @@ let winner = null; // stores "P1" or "P2" when the game ends
 let punchSounds = [];
 let winSound;
 let bgMusic;
+let startScreenMusic;
+// additional assets
 let bgImage; 
 let startScreenImage;
+let confetti = [];
+let hitSparks = [];
+let shakeX = 0;
+let shakeY = 0;
+let shakeStrength = 0;
 // ------------------------------------------------------------
 // FIGHTER CLASS
 // Extended from Example 1 to include health, attacking,
@@ -240,6 +247,41 @@ class Fighter {
   }
 }
 
+// Hit Spark Animation class (optional visual effect when a hit lands)
+class HitSpark {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.life = 12; // frames
+    this.size = random(12, 20);
+    this.angle = random(TWO_PI);
+    this.spin = random(-0.2, 0.2);
+    this.col = color(255, 220, 80); // bright yellow/orange
+  }
+
+  update() {
+    this.life--;
+    this.angle += this.spin;
+  }
+
+  draw() {
+    push();
+    translate(this.x, this.y);
+    rotate(this.angle);
+    noStroke();
+    fill(this.col);
+    rect(-this.size/2, -3, this.size, 6); // spark streak
+    pop();
+  }
+
+  isDead() {
+    return this.life <= 0;
+  }
+}
+// Screen shake function (optional effect when a hit lands)
+function startScreenShake(amount) {
+  shakeStrength = amount;
+}
 // ============================================================
 // GLOBAL VARIABLES
 // ============================================================
@@ -261,6 +303,41 @@ function preload() {
   bgMusic  = loadSound("assets/sounds/background.mp3");
   bgImage = loadImage("assets/images/portal_bg_image.jpg"); // Load background image
   startScreenImage = loadImage("assets/images/start_screen_image.jpg"); // Load start screen image
+  startScreenMusic = loadSound("assets/sounds/space_start_screen_music.mp3"); // Load start screen music
+}
+
+// create confetti at win screen
+class ConfettiParticle {
+  constructor() {
+    this.x = random(width);
+    this.y = random(-50, -10);
+    this.vx = random(-1, 1);
+    this.vy = random(2, 5);
+    this.size = random(6, 12);
+    this.col = color(random(255), random(255), random(255));
+    this.rotation = random(TWO_PI);
+    this.rotationSpeed = random(-0.1, 0.1);
+  }
+
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.rotation += this.rotationSpeed;
+  }
+
+  draw() {
+    push();
+    translate(this.x, this.y);
+    rotate(this.rotation);
+    fill(this.col);
+    noStroke();
+    rect(0, 0, this.size, this.size * 0.6);
+    pop();
+  }
+
+  isOffScreen() {
+    return this.y > height + 20;
+  }
 }
 
 // ============================================================
@@ -313,16 +390,49 @@ function draw() {
   if (gameState === STATE_START) {
     drawStartScreen();
   } else if (gameState === STATE_FIGHT) {
+      // Apply camera shake
+    if (shakeStrength > 0) {
+      shakeX = random(-shakeStrength, shakeStrength);
+      shakeY = random(-shakeStrength, shakeStrength);
+      shakeStrength *= 0.85; // decay
+    } else {
+      shakeX = 0;
+      shakeY = 0;
+   }
+
+  push();
+  translate(shakeX, shakeY);
+    
     drawArena();
     updateAndDrawFighters();
     checkHits();
     drawHealthBars();
     drawFightHUD();
+
+    pop();
+    // Draw hit sparks
+  for (let i = hitSparks.length - 1; i >= 0; i--) {
+    hitSparks[i].update();
+    hitSparks[i].draw();
+    if (hitSparks[i].isDead()) {
+    hitSparks.splice(i, 1);
+   }
+  }
+
+    
   } else if (gameState === STATE_WIN) {
     drawArena();
     fighter1.draw();
     fighter2.draw();
     drawWinScreen();
+     // Update and draw confetti
+    for (let i = confetti.length - 1; i >= 0; i--) {
+    confetti[i].update();
+    confetti[i].draw();
+    if (confetti[i].isOffScreen()) {
+      confetti.splice(i, 1);
+    }
+  }
   }
 }
 
@@ -339,9 +449,9 @@ function startGame() {
   gameState = STATE_FIGHT;
   winner = null;
   setupFighters();
-  if (!bgMusic.isPlaying()) {
-    bgMusic.loop();
-  }
+  if (startScreenMusic.isPlaying()) startScreenMusic.stop();
+  bgMusic.loop();
+  
 }
 
 // ------------------------------------------------------------
@@ -354,6 +464,11 @@ function endGame(winnerLabel) {
   winner = winnerLabel;
   bgMusic.stop();
   winSound.play();
+    // Spawn 150 confetti pieces
+  confetti = [];
+  for (let i = 0; i < 150; i++) {
+    confetti.push(new ConfettiParticle());
+  }
 }
 
 // ============================================================
@@ -389,6 +504,11 @@ function drawStartScreen() {
   fill(255);
   textSize(16);
   text("Press ENTER to start", width / 2, height / 2 + 110);
+
+  // Start screen music
+  if (!startScreenMusic.isPlaying()) {
+  startScreenMusic.loop();
+}
 }
 
 // ------------------------------------------------------------
@@ -448,13 +568,18 @@ function updateAndDrawFighters() {
 function checkHits() {
   // Fighter 1 hitting Fighter 2
   if (fighter1.isAttacking && !fighter1.hitLanded) {
-    let fistX = fighter1.getPunchX();
-    let dist = abs(fistX - fighter2.x);
-    if (dist < fighter2.r + 10) {
-      fighter2.takeHit();
-      fighter1.hitLanded = true;
-    }
+  let fistX = fighter1.getPunchX();
+  let dist = abs(fistX - fighter2.x);
+
+  if (dist < fighter2.r + 10) {
+    fighter2.takeHit();
+    fighter1.hitLanded = true;
+
+    // Only trigger effects on REAL hits
+    hitSparks.push(new HitSpark(fistX, fighter2.y));
+    startScreenShake(10);
   }
+}
 
   // Fighter 2 hitting Fighter 1
   if (fighter2.isAttacking && !fighter2.hitLanded) {
@@ -464,6 +589,9 @@ function checkHits() {
       fighter1.takeHit();
       fighter2.hitLanded = true;
     }
+     // Only trigger effects on REAL hits
+    hitSparks.push(new HitSpark(fistX, fighter1.y));
+    startScreenShake(10);
   }
 }
 
